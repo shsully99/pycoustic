@@ -4,8 +4,8 @@ import datetime as dt
 
 
 appid = ""
-with open("tests/openweather_app_id.txt") as f:
-    appid = f.readlines()[0]
+# ss with open("tests/openweather_app_id.txt") as f:
+# ss    appid = f.readlines()[0]
 
 w_dict = {
     "start": "2022-09-16 12:00:00",
