@@ -24,7 +24,7 @@ class ToolTip:
         self.full_text = full_text or text
         self.widget.bind("<Enter>", self.on_enter)
         self.widget.bind("<Leave>", self.on_leave)
-        self.widget.bind("<Button-1>", self.on_click)
+        #self.widget.bind("<Button-1>", self.on_click)
         self.tipwindow = None
         self.full_window = None
 
@@ -34,8 +34,8 @@ class ToolTip:
     def on_leave(self, event=None):
         self.hide_tooltip()
 
-    def on_click(self, event=None):
-        self.show_full_docstring()
+    #def on_click(self, event=None):
+    #    self.show_full_docstring()
 
     def show_tooltip(self):
         if self.tipwindow or not self.text:
@@ -56,7 +56,7 @@ class ToolTip:
         self.tipwindow = None
         if tw:
             tw.destroy()
-
+    '''
     def show_full_docstring(self):
         if self.full_window:
             self.full_window.destroy()
@@ -86,7 +86,7 @@ class ToolTip:
         # Close button
         close_btn = ttk.Button(tw, text="Close", command=tw.destroy)
         close_btn.pack(pady=5)
-
+    '''
 class Application(tk.Tk):
     
     def __init__(self):
@@ -131,7 +131,7 @@ class Application(tk.Tk):
         self.analysis_label.grid(row=3, column=0, padx=5, pady=10, sticky="e")
 
         self.analysis_var = StringVar()
-        self.analysis_combobox = ttk.Combobox(self, textvariable=self.analysis_var, values=["resi_summary", "modal", "lmax_spectra", "leq_spectra"])
+        self.analysis_combobox = ttk.Combobox(self, textvariable=self.analysis_var, values=["resi_summary", "modal", "lmax_spectra", "leq_spectra", "weather", "weather_summary", "set_periods", "get_periods", "counts", "get_start_end"])
         self.analysis_combobox.set("resi_summary")
         self.analysis_combobox.grid(row=3, column=1, padx=5, pady=10, sticky="w")
         self.analysis_var.trace("w", self.on_analysischange)
@@ -147,10 +147,10 @@ class Application(tk.Tk):
         # Create parameter input frame
         self.create_parameter_inputs()
 
-        self.execute_button = ttk.Button(self, text="Select Columns", command=self.Column_Selection_Modal)
-        self.execute_button.grid(row=6, column=0, padx=5, pady=10, sticky="e")
+        self.select_columns_button = ttk.Button(self, text="Select Columns", command=self.Column_Selection_Modal, state="disabled")
+        self.select_columns_button.grid(row=6, column=0, padx=5, pady=10, sticky="e")
 
-        self.execute_button = ttk.Button(self, text="Execute", command=self.execute_code)
+        self.execute_button = ttk.Button(self, text="Execute", command=self.execute_code, state="disabled")
         self.execute_button.grid(row=6, column=2, padx=5, pady=10, sticky="w")
 
         self.tree = ttk.Treeview(self, show="headings")
@@ -242,10 +242,30 @@ class Application(tk.Tk):
 
     def on_analysischange(self, *args):
         analysis_type = self.analysis_combobox.get()
+        
+        # Hide all parameter frames first
+        if hasattr(self, 'params_frame'):
+            self.params_frame.grid_remove()
+        if hasattr(self, 'weather_params_frame'):
+            self.weather_params_frame.grid_remove()
+        if hasattr(self, 'set_periods_params_frame'):
+            self.set_periods_params_frame.grid_remove()
+        if hasattr(self, 'counts_params_frame'):
+            self.counts_params_frame.grid_remove()
+        
+        # Show the appropriate parameter frame
         if analysis_type == "resi_summary":
             self.params_frame.grid()
-        else:
-            self.params_frame.grid_remove()
+        elif analysis_type == "weather":
+            self.weather_params_frame.grid()
+        elif analysis_type == "set_periods":
+            if hasattr(self, 'set_periods_params_frame'):
+                self.set_periods_params_frame.grid()
+        elif analysis_type == "counts":
+            if hasattr(self, 'counts_params_frame'):
+                self.counts_params_frame.grid()
+        # get_periods and get_start_end don't need parameter frames
+        
         return
  
   
@@ -286,6 +306,11 @@ class Application(tk.Tk):
           
             for index, row in self.df.iterrows():
                 self.tree.insert("", "end", values=[index] + list(row))
+            
+            # Enable the buttons after successful CSV file load
+            self.select_columns_button.config(state="normal")
+            self.execute_button.config(state="normal")
+            
             return
  
     def execute_code(self):
@@ -315,6 +340,81 @@ class Application(tk.Tk):
                 df = self.survey.lmax_spectra()
             elif analysis_type == "leq_spectra":
                 df = self.survey.leq_spectra()
+            elif analysis_type == "weather":
+                # Get parameters from weather input fields
+                interval = int(self.weather_interval.get().strip()) if self.weather_interval.get().strip() else 6
+                api_key = self.weather_api_key.get().strip() if self.weather_api_key.get().strip() else ""
+                country = self.weather_country.get().strip() if self.weather_country.get().strip() else "GB"
+                postcode = self.weather_postcode.get().strip() if self.weather_postcode.get().strip() else ""
+                tz = self.weather_tz.get().strip() if self.weather_tz.get().strip() else ""
+                recompute = self.weather_recompute.get()
+                drop_cols = self.weather_drop_cols.get().strip() if self.weather_drop_cols.get().strip() else None
+                
+                print(f"interval: {interval}, api_key: {api_key}, country: {country}, postcode: {postcode}, tz: {tz}, recompute: {recompute}, drop_cols: {drop_cols}")
+                df = self.survey.weather(interval=interval, api_key=api_key, country=country, postcode=postcode, tz=tz, recompute=recompute, drop_cols=drop_cols)
+            elif analysis_type == "weather_summary":
+                df = self.survey.weather_summary()
+            elif analysis_type == "set_periods":
+                # Get parameters from set_periods input fields
+                day_hour = int(self.day_hour.get().strip()) if self.day_hour.get().strip() else 7
+                day_minute = int(self.day_minute.get().strip()) if self.day_minute.get().strip() else 0
+                evening_hour = int(self.evening_hour.get().strip()) if self.evening_hour.get().strip() else 19
+                evening_minute = int(self.evening_minute.get().strip()) if self.evening_minute.get().strip() else 0
+                night_hour = int(self.night_hour.get().strip()) if self.night_hour.get().strip() else 23
+                night_minute = int(self.night_minute.get().strip()) if self.night_minute.get().strip() else 0
+                
+                times = {
+                    "day": (day_hour, day_minute),
+                    "evening": (evening_hour, evening_minute),
+                    "night": (night_hour, night_minute)
+                }
+                print(f"Setting periods: {times}")
+                self.survey.set_periods(times=times)
+                messagebox.showinfo("Success", f"Periods set: Day {day_hour:02d}:{day_minute:02d}, Evening {evening_hour:02d}:{evening_minute:02d}, Night {night_hour:02d}:{night_minute:02d}")
+                return
+            elif analysis_type == "get_periods":
+                periods = self.survey.get_periods()
+                print(f"Current periods: {periods}")
+                # Convert to DataFrame for display
+                df_data = []
+                for position, period_data in periods.items():
+                    # period_data is a tuple: (day_start, evening_start, night_start)
+                    # Each start can be either a tuple (hour, minute) or datetime.time object
+                    day_start, evening_start, night_start = period_data
+                    
+                    # Helper function to format time
+                    def format_time(time_obj):
+                        if hasattr(time_obj, 'hour'):  # datetime.time object
+                            return f"{time_obj.hour:02d}:{time_obj.minute:02d}"
+                        else:  # tuple (hour, minute)
+                            return f"{time_obj[0]:02d}:{time_obj[1]:02d}"
+                    
+                    df_data.append({
+                        'Position': position,
+                        'Day Start': format_time(day_start),
+                        'Evening Start': format_time(evening_start),
+                        'Night Start': format_time(night_start)
+                    })
+                df = pd.DataFrame(df_data)
+            elif analysis_type == "counts":
+                # Get parameters from counts input fields
+                cols_measurement = self.counts_measurement.get().strip() if self.counts_measurement.get().strip() else "L90"
+                cols_weighting = self.counts_weighting.get().strip() if self.counts_weighting.get().strip() else "A"
+                day_t = self.counts_day_t.get().strip() if self.counts_day_t.get().strip() else "60min"
+                evening_t = self.counts_evening_t.get().strip() if self.counts_evening_t.get().strip() else "60min"
+                night_t = self.counts_night_t.get().strip() if self.counts_night_t.get().strip() else "15min"
+                
+                cols = [(cols_measurement, cols_weighting)]
+                print(f"counts: cols={cols}, day_t={day_t}, evening_t={evening_t}, night_t={night_t}")
+                df = self.survey.counts(cols=cols, day_t=day_t, evening_t=evening_t, night_t=night_t)
+            elif analysis_type == "get_start_end":
+                start, end = self.survey.get_start_end()
+                print(f"Start: {start}, End: {end}")
+                # Convert to DataFrame for display
+                df = pd.DataFrame({
+                    'Measurement': ['Start', 'End'],
+                    'DateTime': [start, end]
+                })
             else:
                 messagebox.showerror("Error", "Please select an analysis type.")
                 return
@@ -322,30 +422,28 @@ class Application(tk.Tk):
             messagebox.showerror("Error", f"An error occurred: {e}")
             return
         
-        # Clear the treeview
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # Only proceed with treeview display if we have a DataFrame
+        if 'df' in locals() and isinstance(df, pd.DataFrame):
+            # Clear the treeview
+            for item in self.tree.get_children():
+                self.tree.delete(item)
 
-        # Set new column headers based on the dataframe
-        #self.tree["columns"] = list(df.columns)
+            # Insert new data into the treeview
+            self.tree["columns"] = ["Index"] + list(df.columns)
+            self.tree.heading("Index", text="Index")
+            self.tree.column("Index", width=150, anchor="center", stretch=True)
+            
+            for col in df.columns:
+                self.tree.heading(col, text=col)
+                self.tree.column(col, width=75, anchor="center", stretch=True)
+       
+            # Insert new data into the treeview
+            for index, row in df.iterrows():
+                self.tree.insert("", "end", values=[index] + list(row))
 
-        # Insert new data into the treeview
-        self.tree["columns"] = ["Index"] + list(df.columns)
-        self.tree.heading("Index", text="Index")
-        self.tree.column("Index", width=150, anchor="center", stretch=True)
-        
-
-        for col in df.columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=75, anchor="center", stretch=True)
-   
-        # Insert new data into the treeview
-        for index, row in df.iterrows():
-            self.tree.insert("", "end", values=[index] + list(row))
-
-        # Copy the DataFrame to the clipboard
-        df.to_clipboard(index=True)
-        messagebox.showinfo("Success", "DataFrame copied to clipboard.")
+            # Copy the DataFrame to the clipboard
+            df.to_clipboard(index=True)
+            messagebox.showinfo("Success", "DataFrame successfully created and copied to clipboard.")
 
 
     def Column_Selection_Modal(self):   
@@ -560,7 +658,251 @@ class Application(tk.Tk):
         # Show parameters if resi_summary is already selected
         if self.analysis_var.get() == "resi_summary":
             self.params_frame.grid()
+        
+        # Create weather parameters frame
+        self.create_weather_parameter_inputs()
+        
+        # Create set_periods parameters frame
+        self.create_set_periods_parameter_inputs()
+        
+        # Create counts parameters frame
+        self.create_counts_parameter_inputs()
     
+    def create_weather_parameter_inputs(self):
+        """Create parameter input fields for weather analysis"""
+        
+        # Weather parameters frame
+        self.weather_params_frame = ttk.LabelFrame(self, text="Weather Parameters", padding="15")
+        self.weather_params_frame.grid(row=4, column=0, columnspan=6, padx=10, pady=10, sticky="ew")
+        
+        # Configure grid weights for even spacing
+        self.weather_params_frame.grid_columnconfigure(0, weight=1, uniform="weather_group")
+        self.weather_params_frame.grid_columnconfigure(1, weight=1, uniform="weather_group")
+        self.weather_params_frame.grid_columnconfigure(2, weight=1, uniform="weather_group")
+        
+        # Row 1: interval, api_key, country
+        # Interval section
+        interval_frame = ttk.LabelFrame(self.weather_params_frame, text="Interval", padding="10")
+        interval_frame.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(interval_frame, text="Hours:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.weather_interval = ttk.Entry(interval_frame, width=12)
+        self.weather_interval.insert(0, "6")
+        self.weather_interval.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.weather_interval, "Weather data interval in hours (default: 6)", 
+                "interval: int, default 6\nTime interval in hours for weather data collection")
+        interval_frame.grid_columnconfigure(1, weight=1)
+        
+        # API Key section
+        api_key_frame = ttk.LabelFrame(self.weather_params_frame, text="API Key", padding="10")
+        api_key_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(api_key_frame, text="Key:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.weather_api_key = ttk.Entry(api_key_frame, width=20, show="*")
+        self.weather_api_key.insert(0, "a5a1f976acc77d6df210e255fcfc4820")
+        self.weather_api_key.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.weather_api_key, "Weather API key (required)", 
+                "api_key: string, default \"\"\nAPI key for weather service access (required)")
+        api_key_frame.grid_columnconfigure(1, weight=1)
+        
+        # Country section
+        country_frame = ttk.LabelFrame(self.weather_params_frame, text="Country", padding="10")
+        country_frame.grid(row=0, column=2, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(country_frame, text="Code:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.weather_country = ttk.Entry(country_frame, width=12)
+        self.weather_country.insert(0, "GB")
+        self.weather_country.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.weather_country, "Country code (default: GB)", 
+                "country: string, default \"GB\"\nTwo-letter country code for location")
+        country_frame.grid_columnconfigure(1, weight=1)
+        
+        # Row 2: postcode, timezone, recompute
+        # Postcode section
+        postcode_frame = ttk.LabelFrame(self.weather_params_frame, text="Postcode", padding="10")
+        postcode_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(postcode_frame, text="Code:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.weather_postcode = ttk.Entry(postcode_frame, width=12)
+        self.weather_postcode.insert(0, "WC1")
+        self.weather_postcode.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.weather_postcode, "Postcode for location", 
+                "postcode: string\nPostcode or ZIP code for weather location")
+        postcode_frame.grid_columnconfigure(1, weight=1)
+        
+        # Timezone section
+        tz_frame = ttk.LabelFrame(self.weather_params_frame, text="Timezone", padding="10")
+        tz_frame.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(tz_frame, text="TZ:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.weather_tz = ttk.Entry(tz_frame, width=12)
+        self.weather_tz.insert(0, "")
+        self.weather_tz.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.weather_tz, "Timezone (optional)", 
+                "tz: string, default \"\"\nTimezone identifier (e.g., 'Europe/London')")
+        tz_frame.grid_columnconfigure(1, weight=1)
+        
+        # Recompute section
+        recompute_frame = ttk.LabelFrame(self.weather_params_frame, text="Options", padding="10")
+        recompute_frame.grid(row=1, column=2, padx=10, pady=5, sticky="ew")
+        
+        self.weather_recompute = tk.BooleanVar()
+        self.weather_recompute_check = ttk.Checkbutton(recompute_frame, text="Recompute", variable=self.weather_recompute)
+        self.weather_recompute_check.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        ToolTip(self.weather_recompute_check, "Force recomputation (default: False)", 
+                "recompute: boolean, default False\nForce recomputation of weather data even if cached")
+        
+        # Row 3: drop_cols (spans all columns)
+        drop_cols_frame = ttk.LabelFrame(self.weather_params_frame, text="Drop Columns", padding="10")
+        drop_cols_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(drop_cols_frame, text="Columns to drop:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.weather_drop_cols = ttk.Entry(drop_cols_frame, width=50)
+        self.weather_drop_cols.insert(0, "")
+        self.weather_drop_cols.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.weather_drop_cols, "Comma-separated column names to drop", 
+                "drop_cols: string, default None\nComma-separated list of column names to exclude from weather data")
+        drop_cols_frame.grid_columnconfigure(1, weight=1)
+        
+        # Initially hide weather parameters
+        self.weather_params_frame.grid_remove()
+        
+        # Show weather parameters if weather analysis is selected
+        if self.analysis_var.get() == "weather":
+            self.weather_params_frame.grid()
+    
+    def create_set_periods_parameter_inputs(self):
+        """Create parameter input fields for set_periods method"""
+        
+        # Set periods parameters frame
+        self.set_periods_params_frame = ttk.LabelFrame(self, text="Set Periods Parameters", padding="15")
+        self.set_periods_params_frame.grid(row=4, column=0, columnspan=6, padx=10, pady=10, sticky="ew")
+        
+        # Configure grid weights for even spacing
+        self.set_periods_params_frame.grid_columnconfigure(0, weight=1, uniform="periods_group")
+        self.set_periods_params_frame.grid_columnconfigure(1, weight=1, uniform="periods_group")
+        self.set_periods_params_frame.grid_columnconfigure(2, weight=1, uniform="periods_group")
+        
+        # Day period section
+        day_frame = ttk.LabelFrame(self.set_periods_params_frame, text="Day Period", padding="10")
+        day_frame.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(day_frame, text="Hour (24h):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.day_hour = ttk.Entry(day_frame, width=12)
+        self.day_hour.insert(0, "7")
+        self.day_hour.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.day_hour, "Day start hour (0-23)", "Hour when daytime period starts (24-hour format)")
+        
+        ttk.Label(day_frame, text="Minute:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        self.day_minute = ttk.Entry(day_frame, width=12)
+        self.day_minute.insert(0, "0")
+        self.day_minute.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.day_minute, "Day start minute (0-59)", "Minute when daytime period starts")
+        day_frame.grid_columnconfigure(1, weight=1)
+        
+        # Evening period section
+        evening_frame = ttk.LabelFrame(self.set_periods_params_frame, text="Evening Period", padding="10")
+        evening_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(evening_frame, text="Hour (24h):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.evening_hour = ttk.Entry(evening_frame, width=12)
+        self.evening_hour.insert(0, "19")
+        self.evening_hour.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.evening_hour, "Evening start hour (0-23)", "Hour when evening period starts (24-hour format)")
+        
+        ttk.Label(evening_frame, text="Minute:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        self.evening_minute = ttk.Entry(evening_frame, width=12)
+        self.evening_minute.insert(0, "0")
+        self.evening_minute.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.evening_minute, "Evening start minute (0-59)", "Minute when evening period starts")
+        evening_frame.grid_columnconfigure(1, weight=1)
+        
+        # Night period section
+        night_frame = ttk.LabelFrame(self.set_periods_params_frame, text="Night Period", padding="10")
+        night_frame.grid(row=0, column=2, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(night_frame, text="Hour (24h):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.night_hour = ttk.Entry(night_frame, width=12)
+        self.night_hour.insert(0, "23")
+        self.night_hour.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.night_hour, "Night start hour (0-23)", "Hour when night period starts (24-hour format)")
+        
+        ttk.Label(night_frame, text="Minute:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        self.night_minute = ttk.Entry(night_frame, width=12)
+        self.night_minute.insert(0, "0")
+        self.night_minute.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.night_minute, "Night start minute (0-59)", "Minute when night period starts")
+        night_frame.grid_columnconfigure(1, weight=1)
+        
+        # Initially hide set_periods parameters
+        self.set_periods_params_frame.grid_remove()
+    
+    def create_counts_parameter_inputs(self):
+        """Create parameter input fields for counts method"""
+        
+        # Counts parameters frame
+        self.counts_params_frame = ttk.LabelFrame(self, text="Counts Parameters", padding="15")
+        self.counts_params_frame.grid(row=4, column=0, columnspan=6, padx=10, pady=10, sticky="ew")
+        
+        # Configure grid weights for even spacing
+        self.counts_params_frame.grid_columnconfigure(0, weight=1, uniform="counts_group")
+        self.counts_params_frame.grid_columnconfigure(1, weight=1, uniform="counts_group")
+        self.counts_params_frame.grid_columnconfigure(2, weight=1, uniform="counts_group")
+        self.counts_params_frame.grid_columnconfigure(3, weight=1, uniform="counts_group")
+        
+        # Columns section
+        cols_frame = ttk.LabelFrame(self.counts_params_frame, text="Columns", padding="10")
+        cols_frame.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(cols_frame, text="Measurement:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.counts_measurement = ttk.Entry(cols_frame, width=12)
+        self.counts_measurement.insert(0, "L90")
+        self.counts_measurement.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.counts_measurement, "Measurement type (default: L90)", "Type of measurement for counts analysis")
+        
+        ttk.Label(cols_frame, text="Weighting:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        self.counts_weighting = ttk.Entry(cols_frame, width=12)
+        self.counts_weighting.insert(0, "A")
+        self.counts_weighting.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.counts_weighting, "Frequency weighting (default: A)", "Frequency weighting for counts analysis")
+        cols_frame.grid_columnconfigure(1, weight=1)
+        
+        # Day period section
+        day_t_frame = ttk.LabelFrame(self.counts_params_frame, text="Day Period", padding="10")
+        day_t_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(day_t_frame, text="Period:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.counts_day_t = ttk.Entry(day_t_frame, width=12)
+        self.counts_day_t.insert(0, "60min")
+        self.counts_day_t.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.counts_day_t, "Daytime averaging period (default: 60min)", "Time period for daytime counts")
+        day_t_frame.grid_columnconfigure(1, weight=1)
+        
+        # Evening period section
+        evening_t_frame = ttk.LabelFrame(self.counts_params_frame, text="Evening Period", padding="10")
+        evening_t_frame.grid(row=0, column=2, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(evening_t_frame, text="Period:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.counts_evening_t = ttk.Entry(evening_t_frame, width=12)
+        self.counts_evening_t.insert(0, "60min")
+        self.counts_evening_t.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.counts_evening_t, "Evening averaging period (default: 60min)", "Time period for evening counts")
+        evening_t_frame.grid_columnconfigure(1, weight=1)
+        
+        # Night period section
+        night_t_frame = ttk.LabelFrame(self.counts_params_frame, text="Night Period", padding="10")
+        night_t_frame.grid(row=0, column=3, padx=10, pady=5, sticky="ew")
+        
+        ttk.Label(night_t_frame, text="Period:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        self.counts_night_t = ttk.Entry(night_t_frame, width=12)
+        self.counts_night_t.insert(0, "15min")
+        self.counts_night_t.grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ToolTip(self.counts_night_t, "Night averaging period (default: 15min)", "Time period for night counts")
+        night_t_frame.grid_columnconfigure(1, weight=1)
+        
+        # Initially hide counts parameters
+        self.counts_params_frame.grid_remove()
+
     def get_resi_summary_docstring_info(self):
         """Extract parameter information from resi_summary docstring"""
         try:
@@ -649,7 +991,6 @@ class Application(tk.Tk):
         # Focus on the popup
         popup.focus_set()
 
-    # ...existing code...
         
 if __name__ == "__main__":
     app = Application()
